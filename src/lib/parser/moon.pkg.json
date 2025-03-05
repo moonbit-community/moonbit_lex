@@ -2,5 +2,17 @@
   "import": [
     "moonbitlang/lex/lib/type",
     "moonbitlang/lex/lib/util/eof_char_set"
+  ],
+  "pre-build": [
+    {
+      "command": "node $mod_dir/boot/moonyacc.js $input -o $output",
+      "input": "parser.mbty",
+      "output": "parser.mbt"
+    },
+    {
+      "command": "node $mod_dir/boot/snapshot/moonlex.js $input -o $output",
+      "input": "lexer.mbtx",
+      "output": "lexer.mbt"
+    }
   ]
 }

@@ -1,0 +1,121 @@
+%start lex
+
+%token EOF          "eof"
+%token PARSE_LBRACE "parse {"
+%token LET          "let"
+%token AS           "as"
+%token UNDERSCORE   "_"
+%token RBRACE       "}"
+%token LPAREN       "("
+%token RPAREN       ")"
+%token LBRACKET     "["
+%token RBRACKET     "]"
+%token EQ           "="
+%token SEMICOLON    ";"
+%token FAT_ARROW    "=>"
+%token BAR          "|"
+%token STAR         "*"
+%token PLUS         "+"
+%token QUESTION     "?"
+%token MINUS        "-"
+%token CARET        "^"
+
+%token<(String, String, String)> RULE_LC_IDENT_LPAREN_CODE_RPAREN_ARROW_CODE_LBRACE
+%token<String> LBRACE_CODE_RBRACE
+%token<String> LC_IDENT
+%token<Char> CHAR
+%token<String> STRING
+
+%%
+
+lex -> Unit
+  : header named_regex_list rule_list trailer {}
+  ;
+
+header -> Unit
+  : LBRACE_CODE_RBRACE {}
+  | {}
+  ;
+
+trailer -> Unit 
+  : LBRACE_CODE_RBRACE {}
+  | {}
+  ;
+
+named_regex_list -> Unit
+  : named_regexe named_regex_list {}
+  | {}
+  ;
+
+named_regexe -> Unit
+  : "let" LC_IDENT "=" regex ";" {}
+  ;
+
+rule_list -> Unit
+  : rule rule_list {}
+  | {}
+  ;
+
+rule -> Unit
+  : RULE_LC_IDENT_LPAREN_CODE_RPAREN_ARROW_CODE_LBRACE "parse {" rule_item_list "}" "}" {}
+  ;
+
+rule_item_list -> Unit
+  : rule_item rule_item_list {}
+  | {}
+  ;
+
+rule_item -> Unit
+  : regex "=>" LBRACE_CODE_RBRACE {}
+  ;
+
+regex -> Unit
+  : alias {}
+  ;
+
+alias -> Unit
+  : alternation {}
+  | alternation "as" LC_IDENT {}
+  ;
+
+alternation -> Unit
+  : concatenation {}
+  | concatenation "|" alternation {}
+  ;
+
+concatenation -> Unit
+  : repetition {}
+  | repetition concatenation {}
+  ;
+
+repetition -> Unit
+  : atom {}
+  | atom "*" {}
+  | atom "+" {}
+  | atom "?" {}
+  ;
+
+atom -> Unit
+  : "(" alternation ")" {}
+  | character_class {}
+  | LC_IDENT {}
+  | CHAR {}
+  | STRING {}
+  | UNDERSCORE {}
+  | EOF {}
+  ;
+
+character_class -> Unit
+  : "[" character_class_inner "]" {}
+  | "[" "^" character_class_inner "]" {}
+  ;
+
+character_class_inner -> Unit
+  : character_class_item character_class_inner {}
+  | character_class_item {}
+  ;
+
+character_class_item -> Unit
+  : CHAR {}
+  | CHAR "-" CHAR {}
+  ;
