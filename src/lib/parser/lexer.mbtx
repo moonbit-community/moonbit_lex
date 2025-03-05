@@ -1,0 +1,173 @@
+{}
+
+let ws = [' ' '\t' '\r' '\n']+;
+let hex_digit = ['0'-'9' 'A'-'F' 'a'-'f'];
+let lc_ident = ['a'-'z' '_'] ['A'-'Z' 'a'-'z' '_' '0'-'9']*;
+
+rule token() -> Token {
+  parse {
+    ws => { token(lexbuf) }
+    "//" [^ '\n']* '\n'? => { token(lexbuf) }
+    "eof" => { EOF }
+    "rule" ws (lc_ident as t) ws? "(" ws? => {
+      let buffer1 = StringBuilder::new()
+      let buffer2 = StringBuilder::new()
+      code_rparen(buffer1, lexbuf)
+      arrow_code_lbrace(buffer2, lexbuf)
+      RULE_LC_IDENT_LPAREN_CODE_RPAREN_ARROW_CODE_LBRACE((t, buffer1.to_string(), buffer2.to_string()))
+    }
+    "parse" ws? "{" => { PARSE_LBRACE }
+    "let" => { LET }
+    "as" => { AS }
+    "_" => { UNDERSCORE }
+    "{" => { 
+      let buffer = StringBuilder::new()
+      code_rbrace(buffer, lexbuf)
+      LBRACE_CODE_RBRACE(buffer.to_string())
+    }
+    "}" => { RBRACE }
+    "(" => { LPAREN }
+    ")" => { RPAREN }
+    "[" => { LBRACKET }
+    "]" => { RBRACKET }
+    "=" => { EQ }
+    ";" => { SEMICOLON }
+    "=>" => { FAT_ARROW }
+    "|" => { BAR }
+    "*" => { STAR }
+    "+" => { PLUS }
+    "?" => { QUESTION }
+    "-" => { MINUS }
+    "^" => { CARET }
+    '\'' ([^ '\'' '\\'] as t) '\'' => { CHAR(t[:][0]) }
+    '\'' '\\' 'b' '\'' => { CHAR('\x08') }
+    '\'' '\\' 't' '\'' => { CHAR('\x09') }
+    '\'' '\\' 'v' '\'' => { CHAR('\x0b') }
+    '\'' '\\' 'r' '\'' => { CHAR('\x0d') }
+    '\'' '\\' 'n' '\'' => { CHAR('\x0a') }
+    '\'' '\\' '\\' '\'' => { CHAR('\\') }
+    '\'' '\\' '\'' '\'' => { CHAR('\'') }
+    '\'' '\\' 'x' ((hex_digit hex_digit) as t) '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      CHAR(Char::from_int(code))
+    }
+    '\'' '\\' 'u' ((hex_digit hex_digit hex_digit hex_digit) as t) '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      CHAR(Char::from_int(code))
+    }
+    '\'' '\\' 'u' '{' (hex_digit+ as t) '}' '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      CHAR(Char::from_int(code))
+    }
+    '"' => {
+      let buffer = StringBuilder::new()
+      string_inner_rquote(buffer, lexbuf)
+      STRING(buffer.to_string())
+    }
+    lc_ident as t => { LC_IDENT(t) }
+  }
+}
+
+rule string_inner_rquote(buffer : StringBuilder) -> Unit {
+  parse {
+    '"' => { () }
+    '\\' 'b' => {
+      buffer.write_char('\x08')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' 't' => {
+      buffer.write_char('\x09')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' 'v' => {
+      buffer.write_char('\x0b')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' 'r' => {
+      buffer.write_char('\x0d')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' 'n' => {
+      buffer.write_char('\x0a')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' '\\' => {
+      buffer.write_char('\x5c')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\\' '\'' => {
+      buffer.write_char('\'')
+      string_inner_rquote(buffer, lexbuf)
+    }
+    '\'' '\\' 'x' ((hex_digit hex_digit) as t) '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      buffer.write_char(Char::from_int(code))
+    }
+    '\'' '\\' 'u' ((hex_digit hex_digit hex_digit hex_digit) as t) '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      buffer.write_char(Char::from_int(code))
+    }
+    '\'' '\\' 'u' '{' (hex_digit+ as t) '}' '\'' => {
+      let code = @strconv.parse_int?(t, base=16).unwrap()
+      buffer.write_char(Char::from_int(code))
+    }
+    _ as t => {
+      buffer.write_string(t)
+      string_inner_rquote(buffer, lexbuf)
+    }
+    eof => { abort("Unexpected end of input") }
+  }
+}
+
+rule code_rparen(buffer : StringBuilder) -> Unit {
+  parse {
+    ")" => { () }
+    "(" => {
+      buffer.write_string("(")
+      code_rparen(buffer, lexbuf)
+      buffer.write_string(")")
+      code_rparen(buffer, lexbuf)
+    }
+    _ as t => {
+      buffer.write_string(t)
+      code_rbrace(buffer, lexbuf)
+    }
+    eof => { abort("Unexpected end of input") }
+  }
+}
+
+rule arrow_code_lbrace(buffer : StringBuilder) -> Unit {
+  parse {
+    "->" ws? ([^ '{']+ as t) ws? "{" => {
+      buffer.write_string(t)
+    }
+    _ => { abort("Syntax error") }
+  }
+}
+
+rule code_rbrace(buffer : StringBuilder) -> Unit {
+  parse {
+    ("//" [^ '\n']+ '\n') as t => {
+      buffer.write_string(t)
+      code_rbrace(buffer, lexbuf)
+    }
+    ('"' ([^ '"' '\\'] | '\\' _)* '"') as t => {
+      buffer.write_string(t)
+      code_rbrace(buffer, lexbuf)
+    }
+    "{" => {
+      buffer.write_string("{")
+      code_rbrace(buffer, lexbuf)
+      buffer.write_string("}")
+      code_rbrace(buffer, lexbuf)
+    }
+    "}" => { () }
+    _ as t => {
+      buffer.write_string(t)
+      code_rbrace(buffer, lexbuf)
+    }
+    eof => { abort("Unexpected end of input") }
+  }
+}
+
+{}
